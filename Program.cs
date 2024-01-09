@@ -10,15 +10,18 @@ using Microsoft.Extensions.Logging.Console;
 using Microsoft.EntityFrameworkCore;
 using proiectPSSC.Data;
 using proiectPSSC.Data.DataRepositories;
+using static Domain.Models.Cart;
+using static proiectPSSC.Domain.Models.PayCartEvent;
+using LanguageExt.Pipes;
 
 namespace proiectPSSC;
 
 class Program
 {
     private static string ConnectionString = "Server=127.0.0.1,1433;User Id=sa;Password=P@ssw0rd123;TrustServerCertificate=True;Database=PSSC";
-
     static async Task Main(string[] args)
     {
+
         using ILoggerFactory loggerFactory = ConfigureLoggerFactory();
         ILogger<AddProductsToCartWorkflow> logger = loggerFactory.CreateLogger<AddProductsToCartWorkflow>();
         ILogger<InvoiceCartWorkflow> logger1 = loggerFactory.CreateLogger<InvoiceCartWorkflow>();
@@ -39,12 +42,13 @@ class Program
         ProductsRepository productsRepository = new ProductsRepository(productsContext);
         InvoiceContext invoiceContext = new InvoiceContext(dbContextBuilder1.Options);
         InvoiceRepository invoiceRepository = new InvoiceRepository(invoiceContext);
+        CalculatedCart calculatedCart = new CalculatedCart();
 
         AddProductsToCartWorkflow workflow = new AddProductsToCartWorkflow(clientsRepository, productsRepository, logger);
         var result = await workflow.ExecuteAsync(command);
 
         InvoiceCartWorkflow workflow1 = new InvoiceCartWorkflow(invoiceRepository, logger1);
-        //var result1 = await workflow1.GenerateInvoice();
+        DeliverySystemWorkflow workflow2 = new DeliverySystemWorkflow(productsContext, logger);
 
         result.Match(
                 whenPayCartFailedEvent: @event =>
@@ -55,7 +59,9 @@ class Program
                 whenPayCartSucceededEvent: @event =>
                 {
                     Console.WriteLine($"Payment succeeded.");
-
+                    workflow1.GenerateInvoice(new CalculatedCart(@event.PaidCart.ProductList));
+                    workflow2.Validate(1, @event.PaidCart);
+                    Console.WriteLine(workflow2.Validate(1, @event.PaidCart));
                     Console.WriteLine(@event.Csv);
                     return @event;
                 }
@@ -79,7 +85,6 @@ class Program
         List<UnvalidatedProduct> listOfProducts = new();
         do
         {
-            //read registration number and grade and create a list of products
             var codeNumber = ReadValue("Client Code Number: ");
             if (string.IsNullOrEmpty(codeNumber))
             {
@@ -103,9 +108,13 @@ class Program
         return listOfProducts;
     }
 
+
+
     private static string? ReadValue(string prompt)
     {
         Console.Write(prompt);
         return Console.ReadLine();
     }
+
+
 }

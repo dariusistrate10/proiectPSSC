@@ -9,4 +9,3 @@ namespace proiectPSSC.Repositories
         TryAsync<List<InvoiceID>> TryGetExistingInvoices(IEnumerable<string> invoiceToCheck);
     }
 }
-
